@@ -1,0 +1,8 @@
+flask
+gspread
+python-barcode
+gunicorn
+pillow
+pandas
+reportlab
+

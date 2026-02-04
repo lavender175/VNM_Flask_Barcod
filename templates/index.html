@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold text-dark"><i class="bi bi-speedometer2"></i> DASHBOARD VẬN HÀNH</h3>
+    <span class="badge bg-light text-dark border">Last updated: Just now</span>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 py-2">
+            <div class="card-body">
+                <div class="text-secondary small fw-bold text-uppercase"><i class="bi bi-box-seam"></i> TỔNG TỒN KHO (UNITS)</div>
+                <div class="display-5 fw-bold text-primary mt-2">{{ "{:,}".format(total_stock) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 py-2">
+            <div class="card-body">
+                <div class="text-secondary small fw-bold text-uppercase"><i class="bi bi-tags"></i> LOẠI SKU ĐANG CÓ</div>
+                <div class="display-5 fw-bold text-dark mt-2">{{ sku_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 py-2">
+            <div class="card-body">
+                <div class="text-secondary small fw-bold text-uppercase"><i class="bi bi-clock-history"></i> LỆNH SX PENDING</div>
+                <div class="display-5 fw-bold text-danger mt-2">{{ pending_po }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3 border-bottom-0" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-bold" id="log-tab" data-bs-toggle="tab" data-bs-target="#log" type="button"><i class="bi bi-journal-text"></i> Nhật Ký Kho</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold text-danger" id="production-tab" data-bs-toggle="tab" data-bs-target="#production" type="button"><i class="bi bi-bar-chart-steps"></i> Tiến Độ Sản Xuất</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="myTabContent">
+
+    <div class="tab-pane fade show active" id="log" role="tabpanel">
+        <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light text-secondary small text-uppercase">
+                            <tr>
+                                <th class="ps-4">Thời gian</th>
+                                <th>Mã FullCode</th>
+                                <th>PO (Lệnh)</th>
+                                <th>Hành động</th>
+                                <th class="text-end">Qty</th>
+                                <th class="text-end pe-4">User</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in records %}
+                            <tr>
+                                <td class="ps-4 text-muted small">{{ row['Timestamp'] }}</td>
+                                <td class="font-monospace text-primary fw-bold" style="font-size: 0.9rem;">{{ row['FullCode'] }}</td>
+                                <td><span class="badge bg-light text-dark border">{{ row.get('PO', '-') }}</span></td>
+                                <td>
+                                    {% if 'IMPORT' in row['Action'] %}
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success">NHẬP KHO</span>
+                                    {% else %}
+                                        <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">XUẤT KHO</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end fw-bold">{{ row['Qty'] }}</td>
+                                <td class="text-end pe-4 small"><i class="bi bi-person-circle"></i> {{ row['User'] }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center py-4 text-muted">Chưa có dữ liệu</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="production" role="tabpanel">
+        <div class="row g-3">
+            {% if po_list_detailed %}
+                {% for po in po_list_detailed %}
+                <div class="col-md-6 col-xl-4">
+                    <div class="card h-100 shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h6 class="fw-bold text-primary mb-1">{{ po['PO'] }}</h6>
+                                    <small class="text-muted fw-bold">{{ po['Product'] }}</small>
+                                </div>
+                                <span class="badge {{ 'bg-success' if po['Status']=='Done' else 'bg-warning text-dark' }}">
+                                    {{ po['Status'] }}
+                                </span>
+                            </div>
+
+                            <div class="alert alert-light border py-2 my-2 small">
+                                <div class="d-flex justify-content-between">
+                                    <span>📅 Bắt đầu:</span> <span class="fw-bold">{{ po['StartDate'] }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between mt-1">
+                                    <span>🎯 Mục tiêu:</span> <span class="fw-bold">{{ po['Target'] }} Units</span>
+                                </div>
+                            </div>
+
+                            <p class="small text-muted mb-1 fw-bold">Nguyên liệu ({{ po['BOM_Count'] }} loại):</p>
+                            <div class="text-truncate small fst-italic text-secondary mb-3">
+                                {{ po['BOM_Detail'] }}
+                            </div>
+
+                            <div class="d-grid">
+                                <a href="/xuat-kho" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-right"></i> Vào Xuất Kho</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12 text-center py-5">
+                    <p class="text-muted">Không có dữ liệu lệnh sản xuất (Kiểm tra lại Sheet Production)</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,240 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<style>
+    /* Style riêng cho khung Preview Tem */
+    .preview-box {
+        background: white; border: 2px solid #333;
+        padding: 15px; margin-top: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        position: relative; overflow: hidden;
+    }
+    .barcode-img-container img { max-width: 100%; height: auto; max-height: 60px; }
+</style>
+
+<div class="row g-4">
+
+    <div class="col-12">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm fw-bold border-{{ category }}" role="alert">
+                        <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <div class="col-lg-4 col-md-12">
+
+        <div class="card shadow border-0 rounded-4 mb-3">
+            <div class="card-header bg-dark text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="bi bi-printer-fill"></i> THIẾT LẬP IN</h6>
+            </div>
+            <div class="card-body bg-light">
+                <div class="row g-2">
+                    <div class="col-7">
+                        <label class="small fw-bold text-secondary mb-1">LOẠI TEM</label>
+                        <select class="form-select fw-bold text-dark" id="config_label_type" onchange="syncConfig()">
+                            <option value="PRODUCT">🏷️ Tem Lẻ (Unit)</option>
+                            <option value="CARTON">📦 Tem Thùng (Box)</option>
+                        </select>
+                    </div>
+                    <div class="col-5">
+                        <label class="small fw-bold text-secondary mb-1">SỐ BẢN</label>
+                        <input type="number" class="form-control fw-bold text-center text-danger" id="config_copies" value="1" min="1" onchange="syncConfig()">
+                    </div>
+                </div>
+                <div class="form-text small mt-2 fst-italic"><i class="bi bi-info-circle"></i> Cài đặt này sẽ áp dụng cho lần nhập kho tiếp theo.</div>
+            </div>
+        </div>
+
+        <div class="card shadow border-0 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-secondary">VỪA NHẬP (SESSION)</span>
+                {% if queue %}
+                <div>
+                    <a href="/download-all-labels" class="badge bg-primary text-decoration-none"><i class="bi bi-printer"></i> IN TẤT CẢ</a>
+                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Saved</span>
+                </div>
+                {% endif %}
+            </div>
+            <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                {% for item in queue %}
+                <div class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+                    <div class="text-truncate" style="max-width: 65%;">
+                        <div class="fw-bold small text-dark">{{ item['SKU'] }}</div>
+                        <div class="text-muted small" style="font-size: 0.7rem;">{{ item['Batch'] }}</div>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-success rounded-pill mb-1">+{{ item['Qty'] }}</span>
+                        <br>
+                        <a href="/download-label/{{ loop.index0 }}" class="text-decoration-none small text-primary fw-bold"><i class="bi bi-download"></i> PDF</a>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted small fst-italic">Chưa có lịch sử nhập...</div>
+                {% endfor %}
+            </div>
+             {% if queue %}
+            <div class="card-footer bg-white p-1 text-center">
+                <a href="/clear-queue" class="btn btn-link text-danger text-decoration-none small fw-bold">Xóa lịch sử phiên</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-lg-8 col-md-12">
+        <div class="d-flex justify-content-between align-items-end mb-3">
+            <h5 class="fw-bold text-success mb-0"><i class="bi bi-box-arrow-in-down"></i> NHẬP KHO & TẠO TEM</h5>
+            <span class="badge bg-light text-dark border">Admin Mode</span>
+        </div>
+
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4">
+                <form action="/nhap-kho" method="POST" id="form-nhap">
+                    <input type="hidden" name="label_type" id="real_label_type" value="PRODUCT">
+                    <input type="hidden" name="copies" id="real_copies" value="1">
+
+                    <div class="mb-3">
+                        <label class="fw-bold small text-secondary">1. SẢN PHẨM (SKU)</label>
+                        <select class="form-select form-select-lg fw-bold border-success text-dark" name="sku" id="sku" required onchange="updatePreview()">
+                            <option value="" selected disabled>-- Chọn sản phẩm --</option>
+                            {% for p in product_list %}
+                                <option value="{{ p['SKU'] }}">{{ p['SKU'] }} - {{ p['Name'] }} ({{ p['Unit'] }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="fw-bold small text-secondary">2. SỐ LƯỢNG</label>
+                            <input type="number" class="form-control fw-bold border-2" name="qty" id="qty" value="100" required oninput="updatePreview()">
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="fw-bold small text-secondary">3. SỐ LÔ (BATCH ID)</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control fw-bold text-primary border-2" name="batch" id="batch" list="list_batches" placeholder="Nhập hoặc để tự động..." required oninput="updatePreview()" autocomplete="off">
+                                <button class="btn btn-outline-secondary" type="button" onclick="generateBatch()" title="Tạo mã mới theo giờ"><i class="bi bi-magic"></i> Auto</button>
+                            </div>
+                            <datalist id="list_batches">
+                                {% for b in existing_batches %}
+                                    <option value="{{ b }}"></option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <label class="small fw-bold text-muted">NGÀY SẢN XUẤT</label>
+                            <input type="date" class="form-control" name="nsx" id="nsx" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small fw-bold text-muted">HẠN SỬ DỤNG</label>
+                            <input type="date" class="form-control" name="hsd" id="hsd" required onchange="updatePreview()">
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1 align-items-end">
+                        <div class="col-md-6">
+                            <label class="small fw-bold text-muted">VỊ TRÍ LƯU KHO</label>
+                            <select class="form-select bg-light" name="location">
+                                <option value="KHO_A_LANH">ZONE A (Kho Lạnh)</option>
+                                <option value="KHO_B_THUONG">ZONE B (Kho Thường)</option>
+                                <option value="KE_PALLET_C1">Kệ Pallet C1</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 d-grid">
+                            <button type="submit" class="btn btn-success btn-lg fw-bold shadow-sm text-uppercase">
+                                <i class="bi bi-cloud-arrow-up-fill me-2"></i> NHẬP KHO
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <div class="mt-4 pt-3 border-top">
+                    <label class="small fw-bold text-muted mb-2"><i class="bi bi-eye"></i> XEM TRƯỚC TEM IN (PREVIEW)</label>
+                    <div class="preview-box rounded">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="alert alert-success py-0 px-2 mb-0 small fw-bold" style="font-size: 0.75rem;" id="preview-batch">BATCH: ...</div>
+                            <div class="text-end lh-1">
+                                <small class="text-muted" style="font-size: 0.65rem;">QTY</small><br>
+                                <span class="fs-4 fw-bold text-dark" id="preview-qty">0</span>
+                            </div>
+                        </div>
+                        <h5 class="fw-bold mt-2 mb-1 text-truncate text-uppercase" id="preview-sku">SELECT SKU...</h5>
+
+                        <div class="text-center barcode-img-container my-2">
+                            <img src="" id="preview-barcode-img" alt="Barcode Preview">
+                        </div>
+
+                        <div class="d-flex justify-content-between small text-muted fw-bold" style="font-size: 0.7rem;">
+                            <span id="preview-hsd">EXP: --/--/----</span>
+                            <span class="text-uppercase">VNM WMS SYSTEM</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. Tự động set ngày hôm nay
+    document.getElementById('nsx').valueAsDate = new Date();
+
+    // 2. Đồng bộ config từ cột trái sang form ẩn
+    function syncConfig() {
+        document.getElementById('real_label_type').value = document.getElementById('config_label_type').value;
+        document.getElementById('real_copies').value = document.getElementById('config_copies').value;
+        updatePreview();
+    }
+
+    // 3. Hàm tạo Batch tự động
+    function generateBatch() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        // Format: LOT-YYYYMMDD-HHMM
+        document.getElementById('batch').value = `LOT-${yyyy}${mm}${dd}-${hh}${min}`;
+        updatePreview();
+    }
+
+    // 4. Hàm cập nhật xem trước Tem
+    function updatePreview() {
+        let sku = document.getElementById('sku').value || "SELECT SKU...";
+        let qty = document.getElementById('qty').value || "0";
+        let batch = document.getElementById('batch').value || "...";
+        let hsd = document.getElementById('hsd').value;
+
+        if(sku.length > 25) sku = sku.substring(0, 23) + "...";
+
+        document.getElementById('preview-sku').innerText = sku;
+        document.getElementById('preview-qty').innerText = qty;
+        document.getElementById('preview-batch').innerText = "BATCH: " + batch;
+
+        if(hsd) {
+            let d = new Date(hsd);
+            document.getElementById('preview-hsd').innerText = "EXP: " + d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
+        }
+
+        // Gọi API tạo mã vạch
+        let url = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${batch}&scale=2&height=10&includetext=false`;
+        document.getElementById('preview-barcode-img').src = url;
+    }
+
+    // 5. Chạy lần đầu
+    window.onload = function() {
+        if(!document.getElementById('batch').value) generateBatch();
+        updatePreview();
+    };
+</script>
+{% endblock %}
