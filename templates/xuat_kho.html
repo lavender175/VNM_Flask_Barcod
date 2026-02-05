@@ -236,10 +236,14 @@
                             <div>
                                 <h4 class="fw-bold {{ text_color }} mb-1">{{ sku }}</h4>
                                 <div class="text-dark small">
-                                    <i class="bi bi-database"></i> Tồn: <strong class="stock-val">{{ stock_data['stock'] }}</strong>
-                                    <span class="mx-2">|</span>
-                                    <i class="bi bi-star-fill text-warning"></i> Ưu tiên: {{ stock_data['oldest_batch'] }}
-                                </div>
+    <i class="bi bi-database"></i> Tồn: <strong class="stock-val">{{ stock_data['stock'] }}</strong>
+    <span class="mx-2">|</span>
+    <i class="bi bi-star-fill text-warning"></i> Ưu tiên:
+    <strong>{{ stock_data['oldest_batch'] }}</strong>
+    <br> <span class="text-muted" style="font-size: 0.8em;">
+        (Nhập: {{ stock_data['oldest_import'] }} - HSD: {{ stock_data['oldest_hsd'] }})
+    </span>
+</div>
                             </div>
                             <div class="text-end">
                                 <span class="display-6 fw-bold {{ text_color }}">{{ cur_qty }}</span><span class="fs-5 text-muted">/{{ req_qty }}</span>
@@ -262,7 +266,9 @@
                                     <select class="form-select fw-bold bg-white batch-select" name="manual_batch_select">
                                         {% for b in sku_batch_options.get(sku, []) %}
                                             <option value="{{ b['Batch_Extract'] }}" data-qty="{{ b['QtyNum'] }}">
-                                                {{ b['Batch_Extract'] }} ({{ b['QtyNum'] }})
+                                                {{ b['Batch_Extract'] }} (SL: {{ b['QtyNum'] }})
+                                                - Nhập: {{ b['Timestamp'][-8:] if b['Timestamp'] else 'N/A' }}
+                                                - HSD: {{ b['HSD'] if b['HSD'] else 'Không có' }}
                                             </option>
                                         {% endfor %}
                                     </select>
@@ -452,6 +458,7 @@
             document.getElementById('bulkDataInput').value = JSON.stringify(data);
             document.getElementById('bulkForm').submit();
         }
+
     }
 
     function validateSubmission(form, maxStock, remaining) {
@@ -480,6 +487,11 @@
              return confirm(`⚠️ Cảnh báo: Bạn đang xuất quá nhu cầu (${inputQty} > ${remaining}). Tiếp tục?`);
         }
         return true;
+        // Thêm kiểm tra trong hàm submitBulk()
+        if (qty <= 0) {
+            alert(`SKU ${sku} đã đủ số lượng, không cần xuất thêm!`);
+            return;
+        }
     }
 
     function resetAndToggleMode() {

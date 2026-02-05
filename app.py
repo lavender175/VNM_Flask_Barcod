@@ -352,28 +352,38 @@ def get_stock_status(current_po, po_requirements):
             df_inv['QtyNum'] = pd.to_numeric(df_inv['Qty'], errors='coerce').fillna(0)
 
             # Group by
-            stock = df_inv.groupby(['SKU_Extract', 'Batch_Extract', 'HSD'])['QtyNum'].sum().reset_index()
+            stock = df_inv.groupby(['SKU_Extract', 'Batch_Extract', 'HSD']).agg({
+                'QtyNum': 'sum',
+                'Timestamp': 'min'  # <--- THÊM DÒNG NÀY ĐỂ GIỮ LẠI GIỜ NHẬP
+            }).reset_index()
             stock = stock[stock['QtyNum'] > 0]
-            stock = stock.sort_values(by=['HSD'])  # Sắp xếp hạn sử dụng (FEFO)
+            stock = stock.sort_values(by=['HSD', 'Timestamp'], ascending=[True, True])
 
             # Map vào từng SKU cần thiết
             for sku in po_requirements.keys():
+                # Convert sang dict records (Lúc này đã có field 'Timestamp' nhờ bước 1)
                 batches = stock[stock['SKU_Extract'] == sku].to_dict('records')
                 sku_batch_options[sku] = batches
 
                 total_stock = sum(b['QtyNum'] for b in batches)
 
-                # Lấy thông tin lô cũ nhất
+                # Lấy thông tin lô cũ nhất (Ưu tiên xuất)
                 oldest_batch = 'N/A'
                 oldest_hsd = '-'
+                oldest_import = '-'  # <--- BIẾN MỚI
+
                 if batches:
+                    # Do đã sort ở trên, dòng đầu tiên [0] là dòng ưu tiên nhất
                     oldest_batch = batches[0]['Batch_Extract']
                     oldest_hsd = batches[0]['HSD']
+                    oldest_import = batches[0]['Timestamp']  # <--- LẤY THỜI GIAN
 
+                # Đóng gói dữ liệu trả về
                 sku_stock_info[sku] = {
                     'stock': int(total_stock),
                     'oldest_batch': oldest_batch,
-                    'oldest_hsd': oldest_hsd
+                    'oldest_hsd': oldest_hsd,
+                    'oldest_import': oldest_import  # <--- NHÉT VÀO ĐÂY
                 }
         except Exception as e:
             print(f"Lỗi tính toán tồn kho: {e}")
@@ -474,10 +484,25 @@ def xuat_kho():
                         if b['Batch_Extract'] == batch:
                             current_batch_stock = int(b['QtyNum'])
                             break
-                    if not qty_form:
-                        qty_final = current_batch_stock  # Hoặc logic min
+                    # --- PHẦN SỬA ĐỔI CHIẾN THUẬT TẠI ĐÂY ---
+                    if current_mode == 'PRODUCTION' and current_po:
+                        # 1. Tính số lượng đã xuất của SKU này cho PO hiện tại
+                        already_picked = po_progress.get(sku, 0)
+                        # 2. Lấy tổng nhu cầu từ BOM
+                        required_qty = po_requirements.get(sku, 0)
+                        # 3. Tính nhu cầu còn thiếu (không để âm)
+                        remaining = max(0, required_qty - already_picked)
+
+                        if not qty_form:
+                            # TỰ ĐỘNG: Chỉ lấy phần thiếu, nhưng không được vượt quá số lượng đang có trong lô
+                            qty_final = min(remaining, current_batch_stock)
+                        else:
+                            # THỦ CÔNG: Lấy theo số nhập nhưng vẫn phải chặn nếu vượt quá tồn kho của lô
+                            qty_final = min(int(qty_form), current_batch_stock)
                     else:
-                        qty_final = int(qty_form)
+                        # Chế độ khác (SCRAP, RTV...): Không có BOM nên ưu tiên số nhập hoặc mặc định là 1
+                        qty_final = int(qty_form) if qty_form else 1
+                    # ---------------------------------------
             else:
                 # Logic KHÁC Production (Fix lỗi -1)
                 # Nếu không nhập số lượng -> Mặc định là 1 (chứ không phải auto-fill theo BOM)
