@@ -1,11 +1,62 @@
 {% extends "layout.html" %}
 
 {% block body %}
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<style>
+    /* Hiệu ứng hiện card nhẹ nhàng (Không giật) */
+    @keyframes smoothFadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .scan-entry { animation: smoothFadeIn 0.3s ease-out forwards; }
 
-<div class="row g-4">
+    /* Thanh Scan dính trên cùng */
+    .sticky-top-custom {
+        position: sticky; top: 0; z-index: 90;
+        background: rgba(248, 249, 250, 0.95);
+        backdrop-filter: blur(5px);
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
 
-    <div class="col-lg-4 col-md-12">
+    /* Nút đóng Card (X) */
+    .btn-close-card {
+        position: absolute; top: 10px; right: 10px;
+        background: transparent; border: none; color: #adb5bd;
+        font-size: 1.2rem; transition: color 0.2s; z-index: 10;
+        cursor: pointer;
+    }
+    .btn-close-card:hover { color: #dc3545; }
+
+    /* Thanh Xuất Tổng Trôi Nổi (Floating Bar) */
+    .floating-action-bar {
+        position: fixed; bottom: 0; right: 0; left: 0;
+        background: white; border-top: 1px solid #dee2e6;
+        padding: 15px; box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+        z-index: 1000; display: none; /* Mặc định ẩn */
+    }
+
+    /* Lịch sử dạng bảng */
+    .history-po-card { border-left: 4px solid #6c757d; background: #fff; }
+    .history-table th { font-size: 0.7rem; text-transform: uppercase; color: #adb5bd; font-weight: 600; padding-bottom: 5px; }
+    .history-table td { font-size: 0.8rem; vertical-align: middle; padding: 8px 4px; border-bottom: 1px dashed #f1f3f5; }
+    .history-table tr:last-child td { border-bottom: none; }
+
+    /* Thông báo Toast */
+    .custom-toast {
+        position: fixed; top: 80px; right: 20px; z-index: 9999;
+        min-width: 300px; box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        animation: slideInRight 0.3s ease-out forwards;
+    }
+    @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+    /* Màu Pastel Custom */
+    .bg-danger-subtle { background-color: #ffebe9 !important; }
+    .bg-success-subtle { background-color: #e6f8f0 !important; }
+    .border-danger-subtle { border-color: #ffc9c9 !important; }
+    .border-success-subtle { border-color: #a3e6cd !important; }
+</style>
+
+<div class="row g-4 mb-5 pb-5"> <div class="col-lg-4 col-md-5">
 
         <div class="card shadow-sm border-0 rounded-4 mb-3">
             <div class="card-header bg-dark text-white py-3">
@@ -13,279 +64,443 @@
             </div>
             <div class="card-body bg-light">
                 <form action="/xuat-kho" method="POST" id="configForm">
-                    <input type="hidden" name="action_type" value="LOAD_CONFIG">
+                    <input type="hidden" name="action_type" value="LOAD_PO">
 
-                    <label class="small fw-bold text-muted mb-1">{{ T['export_mode'] }}</label>
-                    <select class="form-select fw-bold text-primary mb-3" name="export_type" id="exportType" onchange="toggleExportMode()">
-                        <option value="PRODUCTION" {{ 'selected' if current_mode == 'PRODUCTION' }}>{{ T['mode_prod'] }}</option>
-                        <option value="SCRAP" {{ 'selected' if current_mode == 'SCRAP' }}>{{ T['mode_scrap'] }}</option>
-                        <option value="RTV" {{ 'selected' if current_mode == 'RTV' }}>{{ T['mode_rtv'] }}</option>
-                        <option value="OTHER" {{ 'selected' if current_mode == 'OTHER' }}>{{ T['mode_other'] }}</option>
-                    </select>
+                    <div class="mb-3">
+                        <label class="small fw-bold text-secondary mb-1">{{ T['export_mode'] }}</label>
+                        <select class="form-select fw-bold text-primary" name="export_type" id="exportType" onchange="resetAndToggleMode()">
+                            <option value="PRODUCTION" {{ 'selected' if current_mode == 'PRODUCTION' }}>{{ T['mode_prod'] }}</option>
+                            <option value="SCRAP" {{ 'selected' if current_mode == 'SCRAP' }}>{{ T['mode_scrap'] }}</option>
+                            <option value="RTV" {{ 'selected' if current_mode == 'RTV' }}>{{ T['mode_rtv'] }}</option>
+                            <option value="OTHER" {{ 'selected' if current_mode == 'OTHER' }}>{{ T['mode_other'] }}</option>
+                        </select>
+                    </div>
 
                     <div id="poSelectGroup" style="display: none;">
-                        <label class="small fw-bold text-muted mb-1">{{ T['select_po'] }}</label>
+                        <label class="small fw-bold text-secondary mb-1">{{ T['select_po'] }}</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-white text-danger border-end-0">
-                                <i class="bi bi-qr-code-scan"></i>
-                            </span>
+                            <span class="input-group-text bg-white text-danger border-end-0"><i class="bi bi-qr-code-scan"></i></span>
                             <input class="form-control fw-bold text-primary border-start-0"
                                    list="poOptions" id="poInput" name="po_select"
-                                   placeholder="{{ T['scan_po_ph'] }}"
-                                   value="{{ current_po }}"
-                                   onchange="checkAndSubmitPO()" autocomplete="off">
-
+                                   placeholder="{{ T['scan_po_ph'] }}" value="{{ current_po }}"
+                                   onchange="document.getElementById('configForm').submit()" autocomplete="off">
                             <datalist id="poOptions">
-                                {% for po in po_list %}
-                                    <option value="{{ po }}">
-                                {% endfor %}
+                                {% for po in po_list %}<option value="{{ po }}">{% endfor %}
                             </datalist>
-
-                            <button class="btn btn-outline-primary" type="button" onclick="document.getElementById('configForm').submit()">
-                                <i class="bi bi-arrow-return-left"></i>
-                            </button>
                         </div>
                     </div>
 
                     <div id="reasonInputGroup" style="display: none;">
-                        <label class="small fw-bold text-muted mb-1">{{ T['note_reason'] }}</label>
+                        <label class="small fw-bold text-secondary mb-1">{{ T['note_reason'] }}</label>
                         <input type="text" class="form-control" name="reason" placeholder="{{ T['note_ph'] }}">
                     </div>
                 </form>
             </div>
         </div>
 
-        <div id="pickingProgressSection" style="display: none;">
-            {% if current_po and po_requirements %}
-            <div class="card shadow-sm border-0 rounded-4 mb-3">
-                <div class="card-header bg-white py-2 border-bottom">
-                    <strong class="text-secondary small"><i class="bi bi-list-check"></i> {{ T['progress_title'] }}</strong>
-                </div>
-                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
-                    {% for sku, req_qty in po_requirements.items() %}
-                        {% set cur_qty = po_progress.get(sku, 0) %}
-                        {% set percent = (cur_qty / req_qty * 100)|int %}
-                        {% set is_done = cur_qty >= req_qty %}
+        {% if current_po and po_requirements %}
+        <div class="card shadow-sm border-0 rounded-4 mb-3" id="progressCard">
+            <div class="card-header bg-white py-3 border-bottom">
+                <strong class="text-secondary small"><i class="bi bi-list-check"></i> {{ T['progress_title'] }}</strong>
+            </div>
 
-                        <div class="list-group-item px-3 py-2">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="small fw-bold {{ 'text-success' if is_done else 'text-dark' }}">
-                                    {{ sku }}
-                                </span>
-                                <span class="badge {{ 'bg-success' if is_done else 'bg-secondary' }}" style="font-size: 0.7rem;">
-                                    {{ cur_qty }}/{{ req_qty }}
-                                </span>
+            <div class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;">
+                {% for sku, req_qty in po_requirements.items() %}
+                    {% set cur_qty = po_progress.get(sku, 0) %}
+                    {% set percent = (cur_qty / req_qty * 100)|int if req_qty > 0 else 0 %}
+                    {% set is_done = cur_qty >= req_qty %}
+
+                    <div class="list-group-item px-3 py-3" id="prog-row-{{ sku }}">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold {{ 'text-success' if is_done else 'text-dark' }}">{{ sku }}</span>
+                            <span class="badge {{ 'bg-success' if is_done else 'bg-secondary' }}">{{ cur_qty }}/{{ req_qty }}</span>
+                        </div>
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar {{ 'bg-success' if is_done else 'bg-warning' }}" style="width: {{ [percent, 100]|min }}%"></div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card shadow-sm border-0 rounded-4" style="overflow: hidden;">
+             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-secondary text-uppercase"><i class="bi bi-clock-history"></i> {{ T['session_hist'] }}</span>
+                {% if grouped_history %}
+                <form action="/xuat-kho" method="POST" style="margin:0;">
+                    <input type="hidden" name="action_type" value="CLEAR">
+                    <button class="btn btn-link btn-sm text-danger text-decoration-none fw-bold p-0" style="font-size: 0.8rem;">
+                        <i class="bi bi-trash"></i> {{ T['clear_hist'] }}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="card-body bg-light p-2" style="max-height: 400px; overflow-y: auto;">
+                {% if grouped_history %}
+                    {% for po_name, items in grouped_history.items() %}
+                        <div class="card mb-2 border-0 shadow-sm history-po-card">
+                            <div class="card-header bg-white border-0 py-2 d-flex justify-content-between">
+                                <span class="fw-bold text-dark small"><i class="bi bi-folder2-open text-primary"></i> {{ po_name }}</span>
+                                <span class="badge bg-light text-dark border">{{ items|length }} items</span>
                             </div>
-                            <div class="progress" style="height: 4px;">
-                                <div class="progress-bar {{ 'bg-success' if is_done else 'bg-warning' }}"
-                                     style="width: {{ [percent, 100]|min }}%"></div>
+
+                            <div class="card-body p-2 pt-0">
+                                <table class="table table-borderless history-table mb-0 w-100">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 35%">SKU</th>
+                                            <th style="width: 30%">Batch</th>
+                                            <th style="width: 20%">Time</th>
+                                            <th style="width: 15%" class="text-end">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in items %}
+                                        <tr>
+                                            <td class="fw-bold text-primary text-truncate" style="max-width: 80px;">{{ item['SKU'] }}</td>
+                                            <td class="text-muted small text-truncate" style="max-width: 70px;">{{ item['Batch'] }}</td>
+                                            <td class="text-muted" style="font-size: 0.65rem; line-height: 1.2;">
+                                                {% set parts = item['Timestamp'].split(' ') %}
+                                                <div>{{ parts[0] }}</div>
+
+                                                <div class="fw-bold">
+                                                    {% if parts|length > 1 %}
+                                                        {{ parts[1][:5] }}
+                                                    {% else %}
+                                                        --:--
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td class="text-end">
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                                                    -{{ item['Qty'] }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="card shadow-sm border-0 rounded-4">
-             <div class="card-header bg-white py-2 d-flex justify-content-between">
-                <span class="small fw-bold text-secondary">{{ T['session_hist'] }}</span>
-                {% if queue %}<span class="badge bg-success">{{ T['saved'] }}</span>{% endif %}
-            </div>
-            <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
-                {% for item in queue %}
-                <div class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
-                    <div>
-                        <div class="fw-bold small">{{ item['SKU'] }}</div>
-                        <div class="text-muted" style="font-size: 0.65rem;">
-                            {{ item['Batch'] }}
-                            {% if item.get('Type') %}
-                                <span class="badge bg-light text-dark border ms-1">{{ item['Type'] }}</span>
-                            {% endif %}
-                        </div>
+                {% else %}
+                    <div class="text-center py-5 text-muted opacity-50">
+                        <i class="bi bi-inbox fs-1"></i>
+                        <p class="small mt-2 mb-0">{{ T.get('no_history', 'Chưa có dữ liệu') }}</p>
                     </div>
-                    <span class="badge bg-danger rounded-pill">-{{ item['Qty'] }}</span>
-                </div>
-                {% endfor %}
+                {% endif %}
             </div>
-            {% if queue %}
-            <div class="card-footer bg-white text-center p-1">
-                <form action="/xuat-kho" method="POST">
-                    <input type="hidden" name="action_type" value="CLEAR">
-                    <button class="btn btn-link btn-sm text-danger text-decoration-none">{{ T['clear_hist'] }}</button>
-                </form>
-            </div>
-            {% endif %}
         </div>
     </div>
 
-    <div class="col-lg-8 col-md-12">
-        {% if current_po %}
+    <div class="col-lg-8 col-md-7">
 
-            <div class="mb-4">
-                <div class="input-group input-group-lg shadow-sm">
-                    <span class="input-group-text bg-white border-0 text-danger"><i class="bi bi-qr-code-scan"></i></span>
-                    <input type="text" id="filterInput" class="form-control border-0 fw-bold"
-                           placeholder="{{ T['scan_ph'] }}"
-                           onkeyup="filterItems()" autofocus autocomplete="off">
-                    <button class="btn btn-light border-0 text-muted" type="button" onclick="document.getElementById('filterInput').value=''; filterItems()"><i class="bi bi-x-circle"></i></button>
-                </div>
+        <div class="sticky-top-custom">
+            {% if current_po or current_mode != 'PRODUCTION' %}
+            <div class="input-group input-group-lg shadow-sm">
+                <span class="input-group-text bg-white border-primary text-primary"><i class="bi bi-upc-scan"></i></span>
+                <input type="text" id="barcode_input" class="form-control border-primary fw-bold"
+                       placeholder="{{ T['scan_ph'] }}" autofocus autocomplete="off">
             </div>
+            {% endif %}
+        </div>
 
-            <div id="waiting-screen" class="text-center py-5">
-                <div class="text-muted opacity-50 display-1"><i class="bi bi-upc-scan"></i></div>
-                <h5 class="text-muted mt-3">{{ T['waiting'] }}</h5>
+        <div id="scanned-container" class="pb-5">
+            <div id="waiting-screen" class="text-center py-5 border-2 border-dashed rounded-4 mt-3 opacity-50"
+                 style="{{ 'display:none' if not current_po }}">
+                <i class="bi bi-qr-code-scan display-1 text-secondary"></i>
+                <h4 class="mt-3 text-secondary">{{ T['waiting'] }}</h4>
             </div>
+        </div>
 
-            <div id="bom-container">
+        <div id="hidden-card-store" style="display: none;">
             {% for sku, req_qty in po_requirements.items() %}
                 {% set cur_qty = po_progress.get(sku, 0) %}
                 {% set stock_data = sku_stock_info.get(sku, {'stock': 0, 'oldest_batch': 'N/A', 'oldest_hsd': '-'}) %}
+                {% set remaining = req_qty - cur_qty %}
 
-                <div class="card shadow border-0 mb-3 item-card animate__animated animate__fadeIn"
-                     data-sku="{{ sku }}" style="display: none;">
+                {% set is_shortage = remaining > stock_data['stock'] %}
 
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
+                {# Nếu thiếu -> Đỏ nhạt. Nếu đủ -> Xanh nhạt #}
+                {% set card_bg = 'bg-danger-subtle' if is_shortage else 'bg-success-subtle' %}
+                {% set border_color = 'border-danger-subtle' if is_shortage else 'border-success-subtle' %}
+                {% set text_color = 'text-danger' if is_shortage else 'text-success' %}
+
+                <div class="card shadow-sm border-0 mb-3 item-card position-relative" data-sku="{{ sku }}" data-stock="{{ stock_data['stock'] }}" data-remaining="{{ remaining }}">
+                    <button type="button" class="btn-close-card" onclick="removeCard(this)"><i class="bi bi-x-lg"></i></button>
+
+                    <div class="card-body p-4 border rounded-4 {{ card_bg }} {{ border_color }}" style="border-width: 2px !important;">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <h4 class="fw-bold text-primary mb-1">{{ sku }}</h4>
-                                <div class="d-flex gap-3 small text-muted">
-                                    <span><i class="bi bi-box-seam"></i> {{ T['stock'] }}: <strong>{{ stock_data['stock'] }}</strong></span>
-                                    <span class="text-warning"><i class="bi bi-star-fill"></i> {{ T['expiry'] }}: {{ stock_data['oldest_batch'] }} ({{ stock_data['oldest_hsd'] }})</span>
+                                <h4 class="fw-bold {{ text_color }} mb-1">{{ sku }}</h4>
+                                <div class="text-dark small">
+                                    <i class="bi bi-database"></i> Tồn: <strong class="stock-val">{{ stock_data['stock'] }}</strong>
+                                    <span class="mx-2">|</span>
+                                    <i class="bi bi-star-fill text-warning"></i> Ưu tiên: {{ stock_data['oldest_batch'] }}
                                 </div>
                             </div>
                             <div class="text-end">
-                                <span class="display-6 fw-bold {{ 'text-success' if cur_qty >= req_qty else 'text-danger' }}">
-                                    {{ cur_qty }}<span class="fs-5 text-muted">/{{ req_qty }}</span>
-                                </span>
+                                <span class="display-6 fw-bold {{ text_color }}">{{ cur_qty }}</span><span class="fs-5 text-muted">/{{ req_qty }}</span>
                             </div>
                         </div>
 
                         {% if cur_qty >= req_qty %}
-                            <div class="alert alert-success d-flex align-items-center mb-0">
-                                <i class="bi bi-check-circle-fill fs-4 me-3"></i>
-                                <div>
-                                    <strong>{{ T['completed'] }}</strong><br>
-                                    {{ T['completed_msg'] }}
-                                </div>
+                             <div class="alert alert-success d-flex align-items-center py-2 mb-0">
+                                <i class="bi bi-check-circle-fill fs-4 me-2"></i><strong>{{ T['completed'] }}</strong>
                             </div>
-
                         {% else %}
-                            <form action="/xuat-kho" method="POST" class="row g-3 align-items-end mt-2">
+                            <form action="/xuat-kho" method="POST" class="row g-2 align-items-end"
+                                  onsubmit="return validateSubmission(this, {{ stock_data['stock'] }}, {{ remaining }})">
                                 <input type="hidden" name="action_type" value="ADD">
                                 <input type="hidden" name="barcode_input" value="{{ sku }}">
+                                <input type="hidden" name="export_type" value="{{ current_mode }}">
 
-                                <div class="col-md-6">
-                                    <label class="form-label small fw-bold text-secondary">{{ T['select_batch'] }}</label>
-                                    <select class="form-select form-select-lg fw-bold text-dark bg-light" name="manual_batch_select">
-                                        {% if sku in sku_batch_options %}
-                                            {% for b in sku_batch_options[sku] %}
-                                                <option value="{{ b['Batch_Extract'] }}">
-                                                    {{ b['Batch_Extract'] }} (Qty: {{ b['QtyNum'] }})
-                                                    {% if loop.first %}⭐ {{ T['priority'] }}{% endif %}
-                                                </option>
-                                            {% endfor %}
-                                        {% else %}
-                                            <option value="N/A">{{ T['no_batch'] }}</option>
-                                        {% endif %}
+                                <div class="col-md-7">
+                                    <label class="small fw-bold text-secondary">Batch</label>
+                                    <select class="form-select fw-bold bg-white batch-select" name="manual_batch_select">
+                                        {% for b in sku_batch_options.get(sku, []) %}
+                                            <option value="{{ b['Batch_Extract'] }}" data-qty="{{ b['QtyNum'] }}">
+                                                {{ b['Batch_Extract'] }} ({{ b['QtyNum'] }})
+                                            </option>
+                                        {% endfor %}
                                     </select>
                                 </div>
-
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-bold text-secondary">{{ T['qty'] }}</label>
-                                    <input type="number" class="form-control form-control-lg fw-bold text-center text-danger"
-                                           name="qty" value="1" min="1" max="{{ stock_data['stock'] }}">
-                                </div>
-
-                                <div class="col-md-3 d-grid">
-                                    <button type="submit" class="btn btn-danger btn-lg fw-bold">
-                                        <i class="bi bi-box-arrow-right"></i> {{ T['btn_confirm'] }}
-                                    </button>
+                                <div class="col-md-5">
+                                    <label class="small fw-bold text-secondary">Qty</label>
+                                    <div class="input-group">
+                                        <input type="number" name="qty" class="form-control fw-bold qty-input"
+                                               placeholder="Cần: {{ remaining }}">
+                                        <button type="submit" class="btn btn-danger fw-bold text-uppercase px-3">
+                                            {{ T['btn_confirm'] }}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         {% endif %}
                     </div>
                 </div>
             {% endfor %}
+        </div>
+    </div>
+
+    <div class="floating-action-bar text-end" id="bulkConfirmBar">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div class="text-start">
+                <span class="fw-bold text-primary"><i class="bi bi-layers"></i> Đã quét: <span id="count-scanned" class="fs-5 text-danger fw-bold">0</span> mã</span>
+                <div class="small text-muted">Hệ thống sẽ xuất toàn bộ mã trên màn hình</div>
             </div>
 
-        {% else %}
-            <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted" style="min-height: 400px;">
-                <i class="bi bi-arrow-left-circle display-1 mb-3 opacity-25"></i>
-                <h5>{{ T['empty_po'] }}</h5>
-                <p>{{ T['empty_po_sub'] }}</p>
-            </div>
-        {% endif %}
+            <form action="/xuat-kho" method="POST" id="bulkForm">
+                <input type="hidden" name="action_type" value="BULK_ADD">
+                <input type="hidden" name="bulk_data" id="bulkDataInput">
+                <button type="button" onclick="submitBulk()" class="btn btn-success btn-lg fw-bold px-5 shadow rounded-pill">
+                    <i class="bi bi-check-all"></i> XÁC NHẬN TẤT CẢ
+                </button>
+            </form>
+        </div>
     </div>
+
 </div>
 
-<script>
-    function filterItems() {
-        let input = document.getElementById('filterInput').value.toUpperCase().trim();
-        let cards = document.querySelectorAll('.item-card');
-        let waitingScreen = document.getElementById('waiting-screen');
-        let found = false;
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div id="toast-container">
+      {% for category, message in messages %}
+        {% set bg_class = 'bg-success text-white' if category == 'success' else 'bg-danger text-white' %}
+        {% set icon = 'bi-check-circle-fill' if category == 'success' else 'bi-exclamation-triangle-fill' %}
 
-        if (input === "") {
-            cards.forEach(card => card.style.display = "none");
-            if(waitingScreen) waitingScreen.style.display = "block";
-            return;
+        <div class="toast custom-toast align-items-center {{ bg_class }} border-0 show" role="alert">
+          <div class="d-flex">
+            <div class="toast-body d-flex align-items-center fs-6">
+              <i class="bi {{ icon }} fs-4 me-3"></i>
+              <div>
+                  <strong class="d-block text-uppercase" style="font-size: 0.7rem; opacity: 0.9;">Thông báo</strong>
+                  {{ message }}
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <script>
+        setTimeout(() => {
+            document.querySelectorAll('.custom-toast').forEach(t => t.remove());
+        }, 4000);
+    </script>
+  {% endif %}
+{% endwith %}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        toggleExportMode();
+
+        const barcodeInput = document.getElementById('barcode_input');
+        const scannedContainer = document.getElementById('scanned-container');
+        const hiddenStore = document.getElementById('hidden-card-store');
+        const waitingScreen = document.getElementById('waiting-screen');
+
+        if (barcodeInput) {
+            barcodeInput.focus();
+            barcodeInput.addEventListener('input', function() {
+                let val = this.value.toUpperCase().trim();
+                if (val === "") return;
+
+                let matchedCard = null;
+                hiddenStore.querySelectorAll('.item-card').forEach(c => {
+                    let s = c.getAttribute('data-sku');
+                    if (val === s || val.startsWith(s + "|")) matchedCard = c;
+                });
+
+                if (matchedCard) {
+                    let sku = matchedCard.getAttribute('data-sku');
+                    if(waitingScreen) waitingScreen.style.display = 'none';
+
+                    let existing = scannedContainer.querySelector(`.item-card[data-sku="${sku}"]`);
+
+                    if (existing) {
+                        scannedContainer.prepend(existing);
+                        highlightCard(existing);
+                    } else {
+                        // Reset animation class để chạy lại hiệu ứng
+                        matchedCard.classList.remove('scan-entry');
+                        void matchedCard.offsetWidth; // Trigger reflow
+                        matchedCard.classList.add('scan-entry');
+
+                        scannedContainer.prepend(matchedCard);
+                        highlightCard(matchedCard);
+                        updateBulkBar();
+                    }
+
+                    // Highlight bên cột trái
+                    let progRow = document.getElementById('prog-row-' + sku);
+                    if(progRow) {
+                        document.querySelectorAll('.list-group-item').forEach(el => el.classList.remove('bg-warning-subtle'));
+                        progRow.classList.add('bg-warning-subtle');
+                        progRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    this.value = "";
+                }
+            });
         }
+    });
+
+    function highlightCard(card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        let body = card.querySelector('.card-body');
+        body.classList.add('shadow-lg'); // Thêm bóng
+        setTimeout(() => body.classList.remove('shadow-lg'), 500); // Tắt bóng
+    }
+
+    function removeCard(btn) {
+        let card = btn.closest('.item-card');
+        let hiddenStore = document.getElementById('hidden-card-store');
+
+        card.style.display = 'none'; // Ẩn
+        hiddenStore.appendChild(card); // Trả về kho ẩn
+        updateBulkBar(); // Cập nhật số lượng
+
+        let container = document.getElementById('scanned-container');
+        if (container.children.length <= 1) {
+             let waiting = document.getElementById('waiting-screen');
+             if(waiting) waiting.style.display = 'block';
+        }
+    }
+
+    function updateBulkBar() {
+        let count = document.getElementById('scanned-container').querySelectorAll('.item-card').length;
+        let bar = document.getElementById('bulkConfirmBar');
+        document.getElementById('count-scanned').innerText = count;
+        bar.style.display = (count > 0) ? 'block' : 'none';
+    }
+
+    function submitBulk() {
+        let container = document.getElementById('scanned-container');
+        let cards = container.querySelectorAll('.item-card');
+        let data = [];
+        let hasError = false;
 
         cards.forEach(card => {
-            let sku = card.getAttribute('data-sku').toUpperCase();
-            if (sku.indexOf(input) > -1 || input.indexOf(sku) > -1) {
-                card.style.display = "block";
-                found = true;
-            } else {
-                card.style.display = "none";
+            let qtyInput = card.querySelector('.qty-input');
+            let batchSelect = card.querySelector('.batch-select');
+
+            if (qtyInput && batchSelect) {
+                let sku = card.getAttribute('data-sku');
+                let val = qtyInput.value;
+                let remaining = parseInt(card.getAttribute('data-remaining'));
+                let stock = parseInt(card.getAttribute('data-stock'));
+
+                // Logic lấy số lượng (Nếu trống -> Lấy min(thiếu, tồn))
+                let qty = val ? parseInt(val) : Math.min(remaining, stock);
+                let batch = batchSelect.value;
+
+                if (qty > stock) {
+                    alert(`⛔ Lỗi SKU ${sku}: Xuất ${qty} > Tồn ${stock}`);
+                    hasError = true;
+                    return;
+                }
+                data.push({sku: sku, batch: batch, qty: qty});
             }
         });
 
-        if (waitingScreen) {
-            waitingScreen.style.display = found ? "none" : "block";
+        if (hasError) return;
+        if (data.length === 0) { alert("Không có dữ liệu hợp lệ!"); return; }
+
+        if (confirm(`Xác nhận xuất kho ${data.length} dòng?`)) {
+            document.getElementById('bulkDataInput').value = JSON.stringify(data);
+            document.getElementById('bulkForm').submit();
         }
+    }
+
+    function validateSubmission(form, maxStock, remaining) {
+        let inputQty = form.querySelector('.qty-input').value;
+        let batchSelect = form.querySelector('.batch-select');
+
+        if (!inputQty) return true;
+
+        inputQty = parseInt(inputQty);
+
+        if (inputQty > maxStock) {
+            alert(`⛔ Lỗi: Tồn kho chỉ còn ${maxStock}!`);
+            return false;
+        }
+
+        if (batchSelect && batchSelect.options.length > 0) {
+             let selectedOption = batchSelect.options[batchSelect.selectedIndex];
+             let batchQty = parseInt(selectedOption.getAttribute('data-qty') || 0);
+             if (inputQty > batchQty) {
+                 alert(`⛔ Lỗi: Lô này chỉ còn ${batchQty}!`);
+                 return false;
+             }
+        }
+
+        if (inputQty > remaining) {
+             return confirm(`⚠️ Cảnh báo: Bạn đang xuất quá nhu cầu (${inputQty} > ${remaining}). Tiếp tục?`);
+        }
+        return true;
+    }
+
+    function resetAndToggleMode() {
+        document.getElementById('configForm').submit();
     }
 
     function toggleExportMode() {
         let mode = document.getElementById('exportType').value;
         let poGroup = document.getElementById('poSelectGroup');
         let reasonGroup = document.getElementById('reasonInputGroup');
-        let pickingSection = document.getElementById('pickingProgressSection');
+        let progressCard = document.getElementById('progressCard');
 
         if (mode === 'PRODUCTION') {
             poGroup.style.display = 'block';
             reasonGroup.style.display = 'none';
-            if(pickingSection) pickingSection.style.display = 'block';
+            if(progressCard) progressCard.style.display = 'block';
         } else {
             poGroup.style.display = 'none';
             reasonGroup.style.display = 'block';
-            if(pickingSection) pickingSection.style.display = 'none';
+            if(progressCard) progressCard.style.display = 'none';
         }
     }
-
-    function checkAndSubmitPO() {
-        let inputVal = document.getElementById('poInput').value.trim();
-        let options = document.getElementById('poOptions').options;
-        let isValid = false;
-
-        for (let i = 0; i < options.length; i++) {
-            if (options[i].value === inputVal) {
-                isValid = true;
-                break;
-            }
-        }
-
-        if (isValid) {
-            document.getElementById('poInput').style.backgroundColor = "#e8f0fe";
-            document.getElementById('configForm').submit();
-        }
-    }
-
-    window.addEventListener('load', function() {
-        toggleExportMode();
-        let input = document.getElementById('filterInput');
-        if(input) input.focus();
-    });
 </script>
 {% endblock %}

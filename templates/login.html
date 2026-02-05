@@ -1,46 +1,137 @@
 {% extends "layout.html" %}
 
 {% block body %}
-<div class="d-flex align-items-center justify-content-center" style="min-height: 80vh;">
-    <div class="card shadow-lg border-0 rounded-4" style="width: 100%; max-width: 400px;">
-        
-        <div class="card-header bg-white border-0 pt-4 text-center">
-            <div class="btn-group shadow-sm rounded-pill p-1 bg-light">
-                <a href="/change-lang/vi" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'vi' else 'btn-light' }}">🇻🇳 VN</a>
-                <a href="/change-lang/en" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'en' else 'btn-light' }}">🇺🇸 EN</a>
-                <a href="/change-lang/zh" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'zh' else 'btn-light' }}">🇨🇳 CN</a>
-            </div>
-        </div>
+<style>
+    .login-container {
+        min-height: 85vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #f4f7f6;
+    }
+    .login-card {
+        width: 100%;
+        max-width: 420px;
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+        background: #ffffff;
+        border: none;
+    }
+    /* Logo thay thế cho dòng chữ bị lỗi hiển thị */
+    .wms-logo-area {
+        margin-bottom: 1.5rem;
+    }
+    .wms-logo-icon {
+        font-size: 3rem;
+        color: #0d6efd;
+        background: rgba(13, 110, 253, 0.05);
+        width: 80px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 20px;
+        margin: 0 auto 1rem;
+    }
+    .login-title {
+        font-weight: 800;
+        font-size: 1.5rem;
+        color: #1a1d23;
+        letter-spacing: -0.5px;
+        text-transform: uppercase;
+    }
+    .lang-selector-wrapper {
+        background: #f1f3f5;
+        padding: 4px;
+        border-radius: 50px;
+        display: inline-flex;
+        margin-bottom: 2rem;
+    }
+    .lang-btn {
+        padding: 6px 14px;
+        border-radius: 50px;
+        text-decoration: none;
+        color: #6c757d;
+        font-weight: 600;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .lang-btn.active {
+        background: white;
+        color: #0d6efd;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .form-control-custom {
+        height: 52px;
+        border-radius: 14px;
+        padding-left: 48px;
+        background-color: #f8f9fa;
+        border: 1.5px solid transparent;
+    }
+    .form-control-custom:focus {
+        background-color: #fff;
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.08);
+    }
+    .input-icon {
+        position: absolute;
+        left: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #adb5bd;
+    }
+    .login-footer {
+        margin-top: 2rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #f1f3f5;
+        color: #adb5bd;
+        font-size: 0.8rem;
+    }
+</style>
 
-        <div class="card-body p-5">
-            <div class="text-center mb-4">
-                <h3 class="fw-bold text-primary">{{ T['login_title'] }}</h3>
-                <p class="text-muted small">{{ T['login_msg'] }}</p>
-            </div>
+<div class="login-container">
+    <div class="login-card p-4 p-md-5 text-center">
+        <div class="wms-logo-area">
+    <div class="wms-logo-icon">
+        <i class="bi bi-box-seam-fill"></i>
+    </div>
+    <h2 class="login-title">{{ T['login_title'] | upper }}</h2>
+    <p class="text-muted small">{{ T['login_msg'] }}</p>
+</div>
 
-            <form action="/login" method="POST">
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-secondary">{{ T['username'] }}</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-0"><i class="bi bi-person"></i></span>
-                        <input type="text" name="username" class="form-control bg-light border-0" required autofocus>
-                    </div>
-                </div>
+        <div class="lang-selector-wrapper">
+    <a href="{{ url_for('change_lang', lang_code='vi') }}" class="lang-btn {{ 'active' if current_lang == 'vi' else '' }}">
+        <img src="https://flagcdn.com/vn.svg" style="width: 20px;"> VN
+    </a>
+    <a href="{{ url_for('change_lang', lang_code='en') }}" class="lang-btn {{ 'active' if current_lang == 'en' else '' }}">
+        <img src="https://flagcdn.com/us.svg" style="width: 20px;"> EN
+    </a>
+    <a href="{{ url_for('change_lang', lang_code='zh') }}" class="lang-btn {{ 'active' if current_lang == 'zh' else '' }}">
+        <img src="https://flagcdn.com/cn.svg" style="width: 20px;"> CN
+    </a>
+</div>
 
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-secondary">{{ T['password'] }}</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-0"><i class="bi bi-lock"></i></span>
-                        <input type="password" name="password" class="form-control bg-light border-0" required>
-                    </div>
-                </div>
+        <form action="/login" method="POST">
+    <div class="mb-3 position-relative">
+        <i class="bi bi-person input-icon"></i>
+        <input type="text" name="username" class="form-control form-control-custom"
+               placeholder="{{ T['username'] }}" required>
+    </div>
+    <div class="mb-4 position-relative">
+        <i class="bi bi-lock input-icon"></i>
+        <input type="password" name="password" class="form-control form-control-custom"
+               placeholder="{{ T['password'] }}" required>
+    </div>
+    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm">
+        {{ T['btn_login'] }} <i class="bi bi-arrow-right-short ms-1"></i>
+    </button>
+</form>
 
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-3">
-                        {{ T['btn_login'] }} <i class="bi bi-box-arrow-in-right ms-2"></i>
-                    </button>
-                </div>
-            </form>
+        <div class="login-footer">
+            <div>VNM Smart Warehouse System v2.0</div>
+            <div class="mt-1 fw-bold text-secondary">@ 2026 Demo by ken technical</div>
         </div>
     </div>
 </div>

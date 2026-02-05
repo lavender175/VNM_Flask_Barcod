@@ -16,6 +16,31 @@
         .nav-link-custom { font-weight: 600; padding: 10px 15px; border-radius: 8px; transition: all 0.2s; }
         .nav-link-custom:hover, .nav-link-custom.active { background-color: rgba(255,255,255,0.15); color: #fff !important; }
         .page-loader { position: fixed; top: 0; left: 0; width: 100%; height: 3px; background: linear-gradient(to right, #0d6efd, #dc3545); z-index: 9999; display: none; }
+
+        /* CSS Khống chế kích thước lá cờ trong Navbar */
+        .flag-img {
+            width: 20px !important;
+            height: 14px !important;
+            object-fit: cover;
+            border-radius: 2px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        /* Đảm bảo khoảng cách giữa các icon trong cụm tiện ích */
+        .gap-3 {
+            gap: 1rem !important;
+        }
+        /* Tìm đến thẻ <style> và dán đoạn này vào cuối */
+        .item-card {
+            transition: all 0.3s ease;
+            opacity: 0.6; /* Làm mờ các card chưa quét */
+            border: 2px solid transparent;
+        }
+        .item-card.scanned-active {
+            opacity: 1 !important; /* Hiện rõ khi quét trúng */
+            border-color: #0d6efd !important;
+            transform: scale(1.02);
+        }
     </style>
 </head>
 <body class="bg-body-tertiary">
@@ -32,47 +57,55 @@
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'index' else '' }}" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'nhap_kho' else '' }}" href="/nhap-kho"><i class="bi bi-box-arrow-in-down"></i> Nhập Kho</a></li>
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'xuat_kho' else '' }}" href="/xuat-kho"><i class="bi bi-box-arrow-up"></i> Xuất Kho</a></li>
-                    <li class="nav-item dropdown ms-lg-3">
-                        <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
-                            <span class="me-2" style="font-size: 1.2rem;">
-                                {% if current_lang == 'vi' %}🇻🇳{% elif current_lang == 'zh' %}🇨🇳{% else %}🇺🇸{% endif %}
-                            </span>
-                            <i class="bi bi-globe2 me-1"></i>
-                            <span class="d-none d-md-inline small fw-bold text-uppercase">{{ current_lang }}</span>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 mt-2">
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/vi">
-                                    <span class="me-3 fs-5">🇻🇳</span>
-                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'vi' else '' }}">Tiếng Việt</span>
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/en">
-                                    <span class="me-3 fs-5">🇺🇸</span>
-                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'en' else '' }}">English</span>
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/zh">
-                                    <span class="me-3 fs-5">🇨🇳</span>
-                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'zh' else '' }}">中文 (Chinese)</span>
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
-                    <button class="btn btn-outline-secondary border-0 rounded-circle" id="theme-toggle" title="Chuyển chế độ"><i class="bi bi-moon-stars-fill"></i></button>
-                    <div class="dropdown">
-                        <a class="text-white text-decoration-none fw-bold dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <img src="https://ui-avatars.com/api/?name={{ session['user'] }}&background=0D8ABC&color=fff" class="rounded-circle me-1" width="32"> {{ session['user'] }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end shadow">
-                            <li><a class="dropdown-item text-danger fw-bold" href="/logout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</a></li>
-                        </ul>
-                    </div>
-                </div>
+    <div class="dropdown">
+        <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+            {% if current_lang == 'vi' %}
+                <img src="https://flagcdn.com/vn.svg" class="flag-img">
+            {% elif current_lang == 'zh' %}
+                <img src="https://flagcdn.com/cn.svg" class="flag-img">
+            {% else %}
+                <img src="https://flagcdn.com/us.svg" class="flag-img">
+            {% endif %}
+            <span class="small fw-bold text-uppercase ms-1">{{ current_lang }}</span>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 mt-2">
+            <li>
+                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/vi">
+                    <img src="https://flagcdn.com/vn.svg" class="flag-img">
+                    <span class="{{ 'fw-bold text-primary' if current_lang == 'vi' else '' }}">Tiếng Việt</span>
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/en">
+                    <img src="https://flagcdn.com/us.svg" class="flag-img">
+                    <span class="{{ 'fw-bold text-primary' if current_lang == 'en' else '' }}">English</span>
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/zh">
+                    <img src="https://flagcdn.com/cn.svg" class="flag-img">
+                    <span class="{{ 'fw-bold text-primary' if current_lang == 'zh' else '' }}">中文 (Chinese)</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <button class="btn btn-outline-secondary border-0 rounded-circle" id="theme-toggle" title="Chuyển chế độ">
+        <i class="bi bi-moon-stars-fill"></i>
+    </button>
+
+    <div class="dropdown">
+        <a class="text-white text-decoration-none fw-bold dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+            <img src="https://ui-avatars.com/api/?name={{ session['user'] }}&background=0D8ABC&color=fff" class="rounded-circle me-2" width="32">
+            <span class="d-none d-sm-inline">{{ session['user'] }}</span>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+            <li><a class="dropdown-item text-danger fw-bold" href="/logout"><i class="bi bi-box-arrow-right"></i> Đăng xuất</a></li>
+        </ul>
+    </div>
+</div>
             </div>
             {% endif %}
         </div>
@@ -82,6 +115,7 @@
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // (Giữ nguyên các hàm toggle theme cũ của ông ở đây)
         const toggleBtn = document.getElementById('theme-toggle');
         const html = document.documentElement;
         const savedTheme = localStorage.getItem('theme') || 'light';
