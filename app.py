@@ -15,6 +15,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from barcode import Code128
 from barcode.writer import ImageWriter
+from languages import DICTIONARY as TRANSLATIONS
 
 app = Flask(__name__)
 app.secret_key = 'vinamilk_secret_key_2026'
@@ -286,91 +287,83 @@ def index():
                            po_list_detailed=po_list_detailed,
                            total_stock=total_stock, sku_count=sku_count, pending_po=pending_po)
 
-# ==========================================
-# 6. XUẤT KHO (FINAL SPEED: LAZY LOAD + BACKGROUND WRITE)
-# ==========================================
-@app.route('/xuat-kho', methods=['GET', 'POST'])
-@login_required
-def xuat_kho():
-    if 'export_queue' not in session: session['export_queue'] = []
 
-    current_po = session.get('current_po', '')
+# --- HELPER 1: LẤY DỮ LIỆU SẢN XUẤT (PO) ---
+def get_po_data(current_po):
+    """Trả về danh sách PO và yêu cầu BOM của PO hiện tại"""
     po_list = []
     po_requirements = {}
+
+    # Lazy Load Production
+    if data_cache["production"] is None:
+        ws = connect_db("Production")
+        if ws: data_cache["production"] = pd.DataFrame(ws.get_all_records())
+
+    df_po = data_cache["production"]
+    if df_po is not None and not df_po.empty:
+        # Chuẩn hóa tên cột để tránh lỗi
+        po_col = 'PO_ID' if 'PO_ID' in df_po.columns else 'PO'
+        po_list = df_po[po_col].astype(str).unique().tolist()
+
+        if current_po:
+            row = df_po[df_po[po_col] == current_po]
+            if not row.empty:
+                try:
+                    po_requirements = json.loads(str(row.iloc[0].get('BOM_JSON', '{}')))
+                except:
+                    po_requirements = {}
+
+    return po_list, po_requirements
+
+
+# --- HELPER 2: TÍNH TOÁN TỒN KHO & TIẾN ĐỘ ---
+def get_stock_status(current_po, po_requirements):
+    """Tính toán tiến độ SX và Tồn kho khả dụng"""
     po_progress = {}
-    sku_batch_options = {}
     sku_stock_info = {}
+    sku_batch_options = {}
 
-    # --- 1. TỐI ƯU HÓA VIỆC LẤY DỮ LIỆU (LAZY LOADING) ---
-    # Thay vì kết nối ngay, ta kiểm tra Cache trước
-    df_inv = None
+    # Lazy Load Inventory
+    if data_cache["inventory"] is None:
+        ws = connect_db("Inventory")
+        if ws: data_cache["inventory"] = pd.DataFrame(ws.get_all_records())
 
-    # 1a. Lấy Production (PO)
-    try:
-        # Nếu chưa có cache PO thì mới đi kết nối
-        if data_cache["production"] is None:
-            ws_po = connect_db("Production")
-            if ws_po: data_cache["production"] = pd.DataFrame(ws_po.get_all_records())
+    df_inv = data_cache["inventory"]
 
-        df_po = data_cache["production"]
-        if df_po is not None and not df_po.empty:
-            po_col = 'PO_ID' if 'PO_ID' in df_po.columns else 'PO'
-            po_list = df_po[po_col].astype(str).unique().tolist()
-            if current_po:
-                row = df_po[df_po[po_col] == current_po]
-                if not row.empty:
-                    try:
-                        po_requirements = json.loads(str(row.iloc[0].get('BOM_JSON', '{}')))
-                    except:
-                        po_requirements = {}
-    except:
-        pass
-
-    # 1b. Lấy Inventory (Kho)
-    try:
-        if data_cache["inventory"] is not None:
-            # Nếu có Cache -> Dùng ngay (Mất 0.00s)
-            df_inv = data_cache["inventory"]
-        else:
-            # Nếu Cache rỗng -> Mới chịu đi kết nối (Mất 2s - Chỉ bị lần đầu)
-            ws_inv = connect_db("Inventory")
-            if ws_inv:
-                data = ws_inv.get_all_records()
-                df_inv = pd.DataFrame(data)
-                data_cache["inventory"] = df_inv
-    except:
-        pass
-
-    # --- 2. TÍNH TOÁN TIẾN ĐỘ & TỒN KHO TỪ DATAFRAME (RAM) ---
-    # (Đoạn này xử lý trên RAM nên cực nhanh, không cần sửa)
-    if current_po and df_inv is not None and not df_inv.empty:
+    if df_inv is not None and not df_inv.empty:
         try:
-            # Tính Tiến Độ
-            if 'PO' in df_inv.columns:
-                mask = (df_inv['PO'] == current_po) & (df_inv['Action'].str.contains('EXPORT', na=False))
-            else:
-                mask = df_inv['Action'].str.contains('EXPORT', na=False)
+            # 1. Tính Tiến độ (Đã xuất bao nhiêu cho PO này)
+            if current_po:
+                if 'PO' in df_inv.columns:
+                    mask = (df_inv['PO'] == current_po) & (df_inv['Action'].str.contains('EXPORT', na=False))
+                else:
+                    mask = df_inv['Action'].str.contains('EXPORT', na=False)
 
-            df_filtered = df_inv[mask].copy()
-            if not df_filtered.empty:
-                df_filtered['SKU_Extract'] = df_filtered['FullCode'].apply(lambda x: x.split('|')[0] if '|' in x else x)
-                df_filtered['QtyAbs'] = pd.to_numeric(df_filtered['Qty'], errors='coerce').abs()
-                po_progress = df_filtered.groupby('SKU_Extract')['QtyAbs'].sum().to_dict()
+                df_prog = df_inv[mask].copy()
+                if not df_prog.empty:
+                    df_prog['SKU_Extract'] = df_prog['FullCode'].apply(lambda x: x.split('|')[0] if '|' in x else x)
+                    df_prog['QtyAbs'] = pd.to_numeric(df_prog['Qty'], errors='coerce').abs()
+                    po_progress = df_prog.groupby('SKU_Extract')['QtyAbs'].sum().to_dict()
 
-            # Tính Tồn Kho & FEFO
+            # 2. Tính Tồn Kho Tổng & Chi tiết Lô (FEFO)
+            # Chuẩn bị dữ liệu
             df_inv['SKU_Extract'] = df_inv['FullCode'].apply(lambda x: x.split('|')[0] if '|' in x else x)
             df_inv['Batch_Extract'] = df_inv['FullCode'].apply(lambda x: x.split('|')[1] if '|' in x else 'N/A')
             df_inv['QtyNum'] = pd.to_numeric(df_inv['Qty'], errors='coerce').fillna(0)
 
+            # Group by
             stock = df_inv.groupby(['SKU_Extract', 'Batch_Extract', 'HSD'])['QtyNum'].sum().reset_index()
             stock = stock[stock['QtyNum'] > 0]
-            stock = stock.sort_values(by=['HSD'])
+            stock = stock.sort_values(by=['HSD'])  # Sắp xếp hạn sử dụng (FEFO)
 
+            # Map vào từng SKU cần thiết
             for sku in po_requirements.keys():
                 batches = stock[stock['SKU_Extract'] == sku].to_dict('records')
                 sku_batch_options[sku] = batches
 
-                total = sum(b['QtyNum'] for b in batches)
+                total_stock = sum(b['QtyNum'] for b in batches)
+
+                # Lấy thông tin lô cũ nhất
                 oldest_batch = 'N/A'
                 oldest_hsd = '-'
                 if batches:
@@ -378,146 +371,127 @@ def xuat_kho():
                     oldest_hsd = batches[0]['HSD']
 
                 sku_stock_info[sku] = {
-                    'stock': int(total),
+                    'stock': int(total_stock),
                     'oldest_batch': oldest_batch,
                     'oldest_hsd': oldest_hsd
                 }
         except Exception as e:
-            print(f"Lỗi tính toán: {e}")
+            print(f"Lỗi tính toán tồn kho: {e}")
 
-    # --- 3. XỬ LÝ POST (LƯU DỮ LIỆU) ---
+    return po_progress, sku_stock_info, sku_batch_options
+
+
+@app.route('/xuat-kho', methods=['GET', 'POST'])
+@login_required
+def xuat_kho():
+    # Khởi tạo session queue
+    if 'export_queue' not in session: session['export_queue'] = []
+    current_po = session.get('current_po', '')
+
+    # --- BƯỚC 1: LẤY DỮ LIỆU (Dùng Helper Function) ---
+    po_list, po_requirements = get_po_data(current_po)
+    po_progress, sku_stock_info, sku_batch_options = get_stock_status(current_po, po_requirements)
+
+    # --- BƯỚC 2: XỬ LÝ POST REQUEST ---
     if request.method == 'POST':
         action_type = request.form.get('action_type')
 
+        # 2a. Đổi PO
         if action_type == 'LOAD_PO':
             session['current_po'] = request.form.get('po_select')
-            session.pop('export_queue', None)
+            session.pop('export_queue', None)  # Xóa lịch sử phiên cũ cho sạch
             return redirect(url_for('xuat_kho'))
 
-
-        elif action_type == 'ADD':
-
-            # BẮT ĐẦU BẤM GIỜ ⏱️
-
-            start_time = time.time()
-
-            barcode_input = request.form.get('barcode_input')
-
-            qty_input = int(request.form.get('qty', 1))
-
-            mode = request.form.get('mode', 'RETAIL')
-
-            manual_batch = request.form.get('manual_batch_select', '')
-
-            sku = barcode_input
-
-            batch = "N/A"
-
-            if "|" in barcode_input:
-
-                parts = barcode_input.split("|")
-
-                sku = parts[0]
-
-                batch = parts[1] if len(parts) > 1 else "N/A"
-
-            elif manual_batch:
-
-                sku = barcode_input
-
-                batch = manual_batch
-
-            # --- VALIDATION (CHẶN LỖI) ---
-
-            if mode == 'PO' and current_po:
-
-                if sku not in po_requirements:
-                    flash(f"⛔ STOP: Mã {sku} không thuộc PO này!", "danger")
-
-                    return redirect(url_for('xuat_kho'))
-
-                current_done = po_progress.get(sku, 0)
-
-                target = po_requirements.get(sku, 0)
-
-                remaining = target - current_done
-
-                if remaining <= 0:
-                    flash(f"⛔ ĐÃ ĐỦ HÀNG: {sku} đã đủ.", "success")
-
-                    return redirect(url_for('xuat_kho'))
-
-                if qty_input > remaining:
-                    flash(f"⚠️ DƯ ĐỊNH MỨC: Chỉ thiếu {remaining}, nhập {qty_input}.", "warning")
-
-                    return redirect(url_for('xuat_kho'))
-
-                real_stock = sku_stock_info.get(sku, {}).get('stock', 0)
-
-                if qty_input > real_stock:
-                    flash(f"⛔ LỖI KHO: Tồn không đủ (Còn {real_stock})", "danger")
-
-                    return redirect(url_for('xuat_kho'))
-
-            # --- XỬ LÝ LƯU SIÊU TỐC ---
-
-            try:
-
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                user = session.get('user', 'Ken')
-
-                full_code = f"{sku}|{batch}"
-
-                row_data = [ts, user, full_code, f"EXPORT_{mode}", "", "", "OUTBOUND", -abs(qty_input), current_po]
-
-                # 1. Update RAM
-
-                update_local_cache("inventory", row_data)
-
-                # 2. Gửi lệnh ngầm
-
-                threading.Thread(target=background_write, args=("Inventory", row_data)).start()
-
-                # 3. Update Session Log
-
-                new_item = {'SKU': sku, 'Batch': batch, 'Qty': qty_input, 'PO': current_po, 'Mode': mode,
-                            'Timestamp': datetime.now().strftime("%H:%M:%S")}
-
-                current_q = session.get('export_queue', [])
-
-                current_q.insert(0, new_item)
-
-                session['export_queue'] = current_q
-
-                # KẾT THÚC BẤM GIỜ ⏱️
-
-                end_time = time.time()
-
-                elapsed_time = round(end_time - start_time, 4)  # Làm tròn 4 số lẻ (ví dụ: 0.0123s)
-
-                # HIỂN THỊ THỜI GIAN XỬ LÝ RA MÀN HÌNH
-
-                flash(f"⚡ Đã xuất: {sku} (SL: {qty_input}) | ⏱️ Xử lý: {elapsed_time}s", "success")
-
-
-            except Exception as e:
-
-                flash(f"Lỗi: {e}", "danger")
-
-            return redirect(url_for('xuat_kho'))
-
+        # 2b. Xóa Session Log
         elif action_type == 'CLEAR':
             session.pop('export_queue', None)
             return redirect(url_for('xuat_kho'))
 
+        # 2c. XUẤT KHO (ADD)
+        elif action_type == 'ADD':
+            start_time = time.time()  # Bấm giờ
+
+            # --- 1. LẤY DỮ LIỆU TỪ FORM ---
+            barcode_input = request.form.get('barcode_input')
+            qty_input = int(request.form.get('qty', 1))
+            manual_batch = request.form.get('manual_batch_select', '')
+
+            # Lấy thông tin loại xuất (Nghiệp vụ)
+            export_type = request.form.get('export_type', 'PRODUCTION')
+            reason = request.form.get('reason', '')
+
+            # --- 2. XỬ LÝ "SMART INPUT" (TÁCH SKU & BATCH) ---
+            # (Đây là đoạn tui vừa bảo ní thay thế để hỗ trợ quét mã xịn)
+            sku = barcode_input.split('|')[0] if "|" in barcode_input else barcode_input
+            batch = barcode_input.split('|')[1] if "|" in barcode_input else (manual_batch or "N/A")
+
+            # --- 3. VALIDATION (KIỂM TRA LỖI) ---
+            # Nếu là xuất cho Sản Xuất (PRODUCTION) thì phải check PO
+            if export_type == 'PRODUCTION' and current_po:
+                if sku not in po_requirements:
+                    flash(f"⛔ SKU {sku} không thuộc PO này!", "danger")
+                    return redirect(url_for('xuat_kho'))
+
+                # Check định mức PO
+                current_done = po_progress.get(sku, 0)
+                req_qty = po_requirements.get(sku, 0)
+                remaining = req_qty - current_done
+
+                if remaining <= 0:
+                    flash(f"✅ Đã xuất đủ {sku}!", "success")
+                    return redirect(url_for('xuat_kho'))
+                if qty_input > remaining:
+                    flash(f"⚠️ Dư định mức! Chỉ còn thiếu {remaining}.", "warning")
+                    return redirect(url_for('xuat_kho'))
+
+            # Check Tồn kho (Luôn luôn phải check dù xuất kiểu gì)
+            real_stock = sku_stock_info.get(sku, {}).get('stock', 0)
+            if qty_input > real_stock:
+                flash(f"⛔ Kho không đủ hàng! (Tồn: {real_stock})", "danger")
+                return redirect(url_for('xuat_kho'))
+
+            # --- 4. CHUẨN BỊ DỮ LIỆU ĐỂ LƯU (ĐOẠN TRONG HÌNH) ---
+            try:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                user = session.get('user', 'Ken')
+                full_code = f"{sku}|{batch}"
+
+                # Tạo Action Code: EXPORT_PRODUCTION, EXPORT_SCRAP...
+                action_code = f"EXPORT_{export_type}"
+
+                # Cột cuối cùng: Nếu là SX thì lưu mã PO, nếu là Hủy/Khác thì lưu Lý do
+                ref_value = current_po if export_type == 'PRODUCTION' else reason
+
+                # [Timestamp, User, FullCode, Action, NSX, HSD, Location, Qty, Reference]
+                row_data = [ts, user, full_code, action_code, "", "", "OUTBOUND", -abs(qty_input), ref_value]
+
+                # --- 5. LƯU (CACHE + THREAD) ---
+                update_local_cache("inventory", row_data)
+                threading.Thread(target=background_write, args=("Inventory", row_data)).start()
+
+                # Update Session UI
+                new_item = {
+                    'SKU': sku, 'Batch': batch, 'Qty': qty_input,
+                    'Type': export_type,  # Lưu thêm loại xuất để hiện lên web cho rõ
+                    'Timestamp': datetime.now().strftime("%H:%M:%S")
+                }
+                session['export_queue'].insert(0, new_item)
+                session.modified = True
+
+                elapsed = round(time.time() - start_time, 4)
+                flash(f"⚡ Đã xuất ({export_type}): {sku} | ⏱️ {elapsed}s", "success")
+
+            except Exception as e:
+                flash(f"Lỗi hệ thống: {e}", "danger")
+
+            return redirect(url_for('xuat_kho'))
+
+    # --- BƯỚC 3: RENDER VIEW ---
     return render_template('xuat_kho.html',
-                           queue=session.get('export_queue', []),
                            po_list=po_list, current_po=current_po,
-                           po_requirements=po_requirements,
-                           po_progress=po_progress,
-                           sku_batch_options=sku_batch_options,
-                           sku_stock_info=sku_stock_info)
+                           po_requirements=po_requirements, po_progress=po_progress,
+                           sku_batch_options=sku_batch_options, sku_stock_info=sku_stock_info,
+                           queue=session.get('export_queue', []))
 
 
 # ==========================================
@@ -605,7 +579,7 @@ def nhap_kho():
 
     return render_template('nhap_kho.html', product_list=product_list, queue=session.get('import_queue', []),
                            existing_batches=existing_batches)
-#123
+
 # --- ROUTE PHỤ ---
 @app.route('/download-label/<int:index>')
 @login_required
@@ -630,6 +604,19 @@ def download_all():
 def clear_queue():
     session.pop('print_queue', None)
     return redirect(url_for('nhap_kho'))
+# --- XỬ LÝ ĐA NGÔN NGỮ ---
+@app.context_processor
+def inject_language():
+    lang_code = session.get('lang', 'vi')
+    # Phải có 'current_lang' ở đây thì HTML mới hiểu để hiện cờ đúng
+    return dict(T=TRANSLATIONS.get(lang_code, TRANSLATIONS['vi']), current_lang=lang_code)
+
+@app.route('/change-lang/<lang_code>')
+def change_lang(lang_code):
+    """API để đổi ngôn ngữ"""
+    if lang_code in TRANSLATIONS:
+        session['lang'] = lang_code
+    return redirect(request.referrer) # Load lại trang hiện tại
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)

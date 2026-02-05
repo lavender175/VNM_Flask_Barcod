@@ -1,43 +1,47 @@
-<!DOCTYPE html>
-<html lang="vi" data-bs-theme="light">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - VNM WMS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #104c8f 0%, #0088cc 100%); }
-        .login-card { width: 100%; max-width: 400px; padding: 40px; border-radius: 15px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        .logo-text { font-weight: 900; color: #104c8f; font-size: 2rem; letter-spacing: 2px; }
-    </style>
-</head>
-<body>
-    <div class="login-card text-center">
-        <div class="mb-4">
-            <div class="logo-text">VNM<span class="text-info">WMS</span></div>
-            <p class="text-muted small">Hệ thống Quản lý Kho Vận</p>
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="d-flex align-items-center justify-content-center" style="min-height: 80vh;">
+    <div class="card shadow-lg border-0 rounded-4" style="width: 100%; max-width: 400px;">
+        
+        <div class="card-header bg-white border-0 pt-4 text-center">
+            <div class="btn-group shadow-sm rounded-pill p-1 bg-light">
+                <a href="/change-lang/vi" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'vi' else 'btn-light' }}">🇻🇳 VN</a>
+                <a href="/change-lang/en" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'en' else 'btn-light' }}">🇺🇸 EN</a>
+                <a href="/change-lang/zh" class="btn btn-sm rounded-pill {{ 'btn-white shadow-sm' if current_lang == 'zh' else 'btn-light' }}">🇨🇳 CN</a>
+            </div>
         </div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} py-2 small">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        <form action="/login" method="POST">
-            <div class="form-floating mb-3 text-start">
-                <input type="text" class="form-control" id="username" name="username" placeholder="User" required>
-                <label for="username">Tài khoản</label>
+
+        <div class="card-body p-5">
+            <div class="text-center mb-4">
+                <h3 class="fw-bold text-primary">{{ T['login_title'] }}</h3>
+                <p class="text-muted small">{{ T['login_msg'] }}</p>
             </div>
-            <div class="form-floating mb-4 text-start">
-                <input type="password" class="form-control" id="password" name="password" placeholder="Pass" required>
-                <label for="password">Mật khẩu</label>
-            </div>
-            <div class="d-grid">
-                <button type="submit" class="btn btn-primary btn-lg fw-bold">ĐĂNG NHẬP</button>
-            </div>
-        </form>
-        <div class="mt-4 text-muted small">© 2026 Powered by Ken (Technical)</div>
+
+            <form action="/login" method="POST">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">{{ T['username'] }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-0"><i class="bi bi-person"></i></span>
+                        <input type="text" name="username" class="form-control bg-light border-0" required autofocus>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold text-secondary">{{ T['password'] }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-0"><i class="bi bi-lock"></i></span>
+                        <input type="password" name="password" class="form-control bg-light border-0" required>
+                    </div>
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-3">
+                        {{ T['btn_login'] }} <i class="bi bi-box-arrow-in-right ms-2"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}

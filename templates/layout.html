@@ -32,6 +32,35 @@
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'index' else '' }}" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'nhap_kho' else '' }}" href="/nhap-kho"><i class="bi bi-box-arrow-in-down"></i> Nhập Kho</a></li>
                     <li class="nav-item"><a class="nav-link nav-link-custom {{ 'active' if request.endpoint == 'xuat_kho' else '' }}" href="/xuat-kho"><i class="bi bi-box-arrow-up"></i> Xuất Kho</a></li>
+                    <li class="nav-item dropdown ms-lg-3">
+                        <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+                            <span class="me-2" style="font-size: 1.2rem;">
+                                {% if current_lang == 'vi' %}🇻🇳{% elif current_lang == 'zh' %}🇨🇳{% else %}🇺🇸{% endif %}
+                            </span>
+                            <i class="bi bi-globe2 me-1"></i>
+                            <span class="d-none d-md-inline small fw-bold text-uppercase">{{ current_lang }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 mt-2">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/vi">
+                                    <span class="me-3 fs-5">🇻🇳</span>
+                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'vi' else '' }}">Tiếng Việt</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/en">
+                                    <span class="me-3 fs-5">🇺🇸</span>
+                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'en' else '' }}">English</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center py-2" href="/change-lang/zh">
+                                    <span class="me-3 fs-5">🇨🇳</span>
+                                    <span class="{{ 'fw-bold text-primary' if current_lang == 'zh' else '' }}">中文 (Chinese)</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <button class="btn btn-outline-secondary border-0 rounded-circle" id="theme-toggle" title="Chuyển chế độ"><i class="bi bi-moon-stars-fill"></i></button>
